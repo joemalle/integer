@@ -18,13 +18,13 @@ struct integer {
   integer() noexcept
     : ptr(nullptr)
     , size(0)
-    , is_positive(1)
+    , is_negative(0)
   {}
 
   integer(integer&& other) noexcept
     : ptr(std::move(other.ptr))
     , size(std::move(other.size))
-    , is_positive(std::move(other.is_positive))
+    , is_negative(std::move(other.is_negative))
   {
     other.ptr = nullptr;
     other.size = 0;
@@ -49,7 +49,7 @@ struct integer {
   integer& operator=(integer&& other) & noexcept {
     std::swap(ptr, other.ptr);
     std::swap(size, other.size);
-    std::swap(is_positive, other.is_positive);
+    std::swap(is_negative, other.is_negative);
     return *this;
   }
 
@@ -58,7 +58,7 @@ struct integer {
     auto const sz = other.size;
     make_size_at_least(sz);
     std::copy_n(pother, sz, ptr);
-    is_positive = other.is_positive;
+    is_negative = other.is_negative;
     return *this;
   }
 
@@ -68,7 +68,7 @@ struct integer {
       
       make_size_at_least(1);
       ptr[0] = abs(other);
-      is_positive = !(other < 0);
+      is_negative = other < 0;
       
     } else {
       static_assert(std::is_integral_v<T>, "can only assign from an integral type");
@@ -124,20 +124,20 @@ struct integer {
         lhs = ~lhs;
         integer ci = carry;
         lhs = add_ignore_sign(lhs, ci);
-        lhs.is_positive = false;
+        lhs.is_negative = true;
       }
       
       return lhs;
     };
     
-    if (is_positive && other.is_positive) {
+    if (!is_negative && !other.is_negative) {
       return *this = add_ignore_sign(*this, other);
-    } else if (!is_positive && !other.is_positive) {
+    } else if (is_negative && other.is_negative) {
       return *this = -add_ignore_sign(*this, other);
-    } else if (is_positive && !other.is_positive) {
+    } else if (!is_negative && other.is_negative) {
       return *this = subtract_ignore_sign(*this, other);
     } else {
-      assert(!is_positive && other.is_positive);
+      assert(is_negative && !other.is_negative);
       return *this = subtract_ignore_sign(other, *this);
     }
   }
@@ -231,7 +231,7 @@ struct integer {
   
   integer operator-() const noexcept {
     auto copy = *this;
-    copy.is_positive = !copy.is_positive;
+    copy.is_negative = !copy.is_negative;
     return copy;
   }
   
@@ -240,35 +240,35 @@ struct integer {
   }
   
   bool operator<(integer const& other) const noexcept {
-    if (!is_positive && other.is_positive) {
+    if (is_negative && !other.is_negative) {
       return true;
-    } else if (is_positive && !other.is_positive) {
+    } else if (!is_negative && other.is_negative) {
       return false;
     }
     
     auto const [this_is_smaller, this_is_bigger] = compare_magnitude(other);
     
-    if (is_positive && other.is_positive) {
+    if (!is_negative && !other.is_negative) {
       return this_is_smaller;
     } else {
-      assert(!is_positive && !other.is_positive);
+      assert(is_negative && other.is_negative);
       return this_is_bigger;
     }
   }
   
   bool operator>(integer const& other) const noexcept {
-    if (!is_positive && other.is_positive) {
+    if (is_negative && !other.is_negative) {
       return false;
-    } else if (is_positive && !other.is_positive) {
+    } else if (!is_negative && other.is_negative) {
       return true;
     }
     
     auto const [this_is_smaller, this_is_bigger] = compare_magnitude(other);
     
-    if (is_positive && other.is_positive) {
+    if (!is_negative && !other.is_negative) {
       return this_is_bigger;
     } else {
-      assert(!is_positive && !other.is_positive);
+      assert(is_negative && other.is_negative);
       return this_is_smaller;
     }
   }
@@ -324,7 +324,7 @@ struct integer {
     "--- printing ---" << std::endl <<
     "--- ptr:   " << ptr << std::endl <<
     "--- size:  " << size << std::endl <<
-    "--- pos:   " << is_positive << std::endl;
+    "--- neg:   " << is_negative << std::endl;
     for (std::uintmax_t i = 0; i < size; ++i) {
       std::cout << "--- --- ptr[" << i << "] = " << ptr[i] << std::endl;
     }
@@ -335,7 +335,7 @@ struct integer {
 private:
   std::uintmax_t* ptr;
   std::uintmax_t size;
-  bool is_positive;
+  bool is_negative;
   
   void make_size_at_least(std::uintmax_t const sz) THROW_NEW {
     assert(!(nullptr == ptr) || 0 == size);
