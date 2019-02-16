@@ -1,0 +1,15 @@
+general:
+	make ptr a tagged ptr with is_negative
+	on some platforms, don't need an explicit size
+	don't copy so much
+
+bad algos:
+	>>=
+	<<=
+	*=
+	/=
+
+missing:
+	sqrt
+	pow
+	bitwise operators

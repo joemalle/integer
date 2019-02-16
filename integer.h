@@ -10,6 +10,7 @@
 
 #ifndef DNDEBUG
 #include <iostream>
+#include <bitset>
 #endif
 
 #define THROW_NEW noexcept
@@ -56,6 +57,7 @@ struct integer {
   integer& operator=(integer const& other) THROW_NEW {
     auto const pother = other.ptr;
     auto const sz = other.size;
+    size = 0; // redundant, but helps cppcheck
     make_size_at_least(sz);
     std::copy_n(pother, sz, ptr);
     is_negative = other.is_negative;
@@ -169,56 +171,147 @@ struct integer {
   integer& operator*=(integer&& other) & THROW_NEW {
     integer res = 0;
     while (other) {
-      res += integer(*this);
-      --other;
-    }
-    return *this = res;
-  }
-  
-  integer& operator/=(integer&& other) & THROW_NEW {
-    assert(integer(0) != other);
-    integer res = 0;
-    integer copy = *this;
-    while (1) {
-      integer copy2 = copy;
-      copy2 -= integer(other);
-      if (copy2 < integer(0)) {
-        return *this = res;
+      assert(nullptr != other.ptr);
+      if (other.ptr[0] & 1) {
+        res += integer(*this);
       }
-      ++res;
-      copy = copy2;
-    }
-  }
-  
-  integer& operator<<=(integer&& other) & THROW_NEW {
-    integer res = *this;
-    while (other) {
-      res *= 2;
-      --other;
+      *this <<= integer(1);
+      other >>= integer(1);
     }
     return *this = res;
   }
   
-  integer& operator>>=(integer&& other) & THROW_NEW {
-    integer res = *this;
-    while (other) {
-      res /= 2;
-      --other;
+  integer& operator/=(integer&& divisor) & THROW_NEW {
+    // This is a bad algorithm but division feels hard and boring
+    // The link below has a lot of helpful material.  Maybe another day
+    // http://bioinfo.ict.ac.cn/~dbu/AlgorithmCourses/Lectures/Lec5-Fast-Division-Hasselstrom2003.pdf
+    
+    // For now, binary search! O(n log(n)) ... optimal would be O(n)
+    assert(integer(0) != divisor);
+    if (*this < divisor) {
+      return *this = integer(0);
     }
-    return *this = res;
+    
+    integer high_q = integer(1);
+    integer low_q = integer(1);
+    integer prod = integer(1);
+    
+    do {
+      low_q = high_q;
+      high_q <<= integer(1);
+      prod = divisor;
+      prod *= integer(high_q);
+    } while (prod <= *this);
+    
+    while (1) {
+      integer copy = low_q;
+      copy += integer(1);
+      if (!(copy < high_q)) {
+        break;
+      }
+      integer mid_q = high_q;
+      mid_q -= integer(low_q);
+      mid_q >>= integer(1);
+      mid_q += integer(low_q);
+      prod = mid_q;
+      prod *= integer(divisor);
+      if (prod < *this) {
+        low_q = mid_q;
+      } else if (*this < prod) {
+        high_q = mid_q;
+      } else {
+        return *this = mid_q;
+      }
+    }
+    
+    return *this = low_q;
   }
   
   integer& operator%=(integer&& other) & THROW_NEW {
     assert(integer(0) != other);
     integer copy = *this;
-    while (1) {
-      integer next = copy;
-      next -= integer(other);
-      if (next < integer(0)) {
-        return *this = copy;
-      } 
-      copy = next;
+    copy /= integer(other);
+    copy *= integer(other);
+    return *this -= integer(copy);
+  }
+  
+  integer& operator<<=(integer&& other) & THROW_NEW {
+    auto constexpr nBits = 8 * sizeof(std::uintmax_t);
+    while (!(other < integer(nBits))) {
+      assert(false); // for now
     }
+    assert(!(integer(nBits) < other));
+    auto nother = static_cast<std::uintmax_t>(other);
+    std::uintmax_t carry = 0;
+    for (std::uintmax_t i = 0; i < size; ++i) {
+      auto tmp = ptr[i];
+      ptr[i] <<= nother;
+      ptr[i] += carry;
+      carry = tmp >> (nBits - nother);
+      /*
+      std::cout << "----" << std::endl;
+      std::cout << "nBits - nother: " << (nBits - nother) << std::endl;
+      std::cout << "ptr[i] init: " << std::bitset<64>(tmp) << std::endl;
+      std::cout << "ptr[i]:      " << std::bitset<64>(ptr[i]) << std::endl;
+      std::cout << "carry:       " << std::bitset<64>(carry) << std::endl;
+      */
+    }
+    if (0 < carry) {
+      make_size_at_least(size + 1);
+      ptr[size - 1] = carry;
+    }
+    return *this;
+  }
+  
+  integer& operator>>=(integer&& other) & THROW_NEW {
+    auto constexpr nBits = 8 * sizeof(std::uintmax_t);
+    while (!(other < integer(nBits))) {
+      assert(false);
+      /*for (std::uintmax_t i = 0; i + 1 < size; ++i) {
+        assert(nullptr != ptr);
+        ptr[i] = ptr[i + 1];
+      }
+      ptr[size - 1] = 0;
+      other -= integer(nBits);*/
+    }
+    assert(!(integer(nBits) < other));
+    auto nother = static_cast<std::uintmax_t>(other);
+    for (std::uintmax_t i = 0; i + 1 < size; ++i) {
+      ptr[i] >>= nother;
+      ptr[i] += (ptr[i + 1] & ((1 << nother) - 1)) << (nBits - nother);
+    }
+    ptr[size - 1] >>= nother;
+    return *this;
+  }
+  
+  integer& operator&=(integer&& other) & THROW_NEW {
+    make_size_at_least(other.size);
+    assert(nullptr != ptr);
+    assert(nullptr != other.ptr);
+    for (std::uintmax_t i = 0; i < other.size; ++i) {
+      ptr[i] &= other.ptr[i];
+    }
+    return *this;
+  }
+  
+  integer& operator|=(integer&& other) & THROW_NEW {
+    make_size_at_least(other.size);
+    assert(nullptr != ptr);
+    assert(nullptr != other.ptr);
+    for (std::uintmax_t i = 0; i < other.size; ++i) {
+      ptr[i] |= other.ptr[i];
+    }
+    return *this;
+  }
+  
+  integer& operator^=(integer&& other) & THROW_NEW {
+    make_size_at_least(other.size);
+    assert(nullptr != ptr);
+    assert(nullptr != other.ptr);
+    for (std::uintmax_t i = 0; i < other.size; ++i) {
+      ptr[i] ^= other.ptr[i];
+    }
+    return *this;
   }
   
   integer operator~() const noexcept {
@@ -326,6 +419,7 @@ struct integer {
     "--- size:  " << size << std::endl <<
     "--- neg:   " << is_negative << std::endl;
     for (std::uintmax_t i = 0; i < size; ++i) {
+      //std::cout << "--- --- ptr[" << i << "] = " << std::bitset<64>(ptr[i]) << std::endl;
       std::cout << "--- --- ptr[" << i << "] = " << ptr[i] << std::endl;
     }
     std::cout << "----------------" << std::endl;
@@ -409,6 +503,9 @@ ARITH_HELPER(operator/, /=, "divide");
 ARITH_HELPER(operator<<, <<=, "shift-left");
 ARITH_HELPER(operator>>, >>=, "shift-right");
 ARITH_HELPER(operator%, %=, "calculate modulus with");
+ARITH_HELPER(operator&, &=, "bitwise and");
+ARITH_HELPER(operator|, |=, "bitwise or");
+ARITH_HELPER(operator^, ^=, "bitwise xor");
 
 #undef ARITH_HELPER
 
@@ -436,3 +533,5 @@ COMP_HELPER(operator<=, <=);
 COMP_HELPER(operator>=, >=);
 COMP_HELPER(operator==, ==);
 COMP_HELPER(operator!=, !=);
+
+#undef COMP_HELPER
