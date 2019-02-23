@@ -4,6 +4,7 @@
 #include <cassert> // assert
 #include <cstdint> // std::uint ... 
 #include <cstring> // memset
+#include <malloc/malloc.h>
 #include <string>
 #include <type_traits> // is_integral_v
 #include <utility> // std::move
@@ -15,17 +16,14 @@
 
 /*INTEGER_EXPLICITNESS*/ integer::integer() noexcept
   : ptr(nullptr)
-  , size(0)
   , is_negative(0)
 {}
 
 integer::integer(integer&& other) noexcept
   : ptr(std::move(other.ptr))
-  , size(std::move(other.size))
   , is_negative(std::move(other.is_negative))
 {
   other.ptr = nullptr;
-  other.size = 0;
 }
     
 integer::integer(integer const& other) INTEGER_THROW_NEW
@@ -36,15 +34,13 @@ integer::integer(integer const& other) INTEGER_THROW_NEW
 
 integer& integer::operator=(integer&& other) & noexcept {
   std::swap(ptr, other.ptr);
-  std::swap(size, other.size);
   std::swap(is_negative, other.is_negative);
   return *this;
 }
 
 integer& integer::operator=(integer const& other) INTEGER_THROW_NEW {
   auto const pother = other.ptr;
-  auto const sz = other.size;
-  size = 0; // redundant, but helps cppcheck
+  auto const sz = other.size();
   make_size_at_least(sz);
   std::copy_n(pother, sz, ptr);
   is_negative = other.is_negative;
@@ -55,44 +51,44 @@ integer& integer::operator=(integer const& other) INTEGER_THROW_NEW {
 
 integer& integer::operator+=(integer&& other) & INTEGER_THROW_NEW {
   auto const add_ignore_sign = [](integer& lhs, integer& rhs) INTEGER_THROW_NEW {
-    bool const lhs_is_larger = rhs.size < lhs.size;
+    bool const lhs_is_larger = rhs.size() < lhs.size();
     auto& larger = lhs_is_larger ? lhs : rhs;
     auto& smaller = !lhs_is_larger ? lhs : rhs;
     
     std::uintmax_t carry = 0;
-    for (std::uintmax_t i = 0; i < larger.size; ++i) {
+    for (std::uintmax_t i = 0; i < larger.size(); ++i) {
       larger.ptr[i] = __builtin_addcl(
         larger.ptr[i],
-        i < smaller.size ? smaller.ptr[i] : 0,
+        i < smaller.size() ? smaller.ptr[i] : 0,
         carry,
         &carry
       );
-      if (0 == carry && !(i < smaller.size)) {
+      if (0 == carry && !(i < smaller.size())) {
         return larger;
       }
     }
     
     if (0 < carry) {
-      larger.make_size_at_least(larger.size + 1);
-      larger.ptr[larger.size - 1] = carry;
+      larger.make_size_at_least(larger.size() + 1);
+      larger.ptr[larger.size() - 1] = carry;
     }
     return larger;
   };
   
   auto const subtract_ignore_sign = [&add_ignore_sign](integer& lhs, integer& rhs) INTEGER_THROW_NEW {
     std::uintmax_t carry = 0;
-    for (std::uintmax_t i = 0; i < std::max(lhs.size, rhs.size); ++i) {
-      if (!(i < lhs.size)) {
+    for (std::uintmax_t i = 0; i < std::max(lhs.size(), rhs.size()); ++i) {
+      if (!(i < lhs.size())) {
         lhs.make_size_at_least(i + 1);
         lhs.ptr[i] = 0;
       }
       lhs.ptr[i] = __builtin_subcl(
         lhs.ptr[i],
-        i < rhs.size ? rhs.ptr[i] : std::uintmax_t{0},
+        i < rhs.size() ? rhs.ptr[i] : std::uintmax_t{0},
         carry,
         &carry
       );
-      if (0 == carry && !(i < rhs.size)) {
+      if (0 == carry && !(i < rhs.size())) {
         return lhs;
       }
     }
@@ -218,7 +214,7 @@ integer& integer::operator<<=(integer&& other) & INTEGER_THROW_NEW {
   assert(!(integer(nBits) < other));
   auto nother = static_cast<std::uintmax_t>(other);
   std::uintmax_t carry = 0;
-  for (std::uintmax_t i = 0; i < size; ++i) {
+  for (std::uintmax_t i = 0; i < size(); ++i) {
     auto tmp = ptr[i];
     ptr[i] <<= nother;
     ptr[i] += carry;
@@ -232,8 +228,8 @@ integer& integer::operator<<=(integer&& other) & INTEGER_THROW_NEW {
     */
   }
   if (0 < carry) {
-    make_size_at_least(size + 1);
-    ptr[size - 1] = carry;
+    make_size_at_least(size() + 1);
+    ptr[size() - 1] = carry;
   }
   return *this;
 }
@@ -251,39 +247,39 @@ integer& integer::operator>>=(integer&& other) & INTEGER_THROW_NEW {
   }
   assert(!(integer(nBits) < other));
   auto nother = static_cast<std::uintmax_t>(other);
-  for (std::uintmax_t i = 0; i + 1 < size; ++i) {
+  for (std::uintmax_t i = 0; i + 1 < size(); ++i) {
     ptr[i] >>= nother;
     ptr[i] += (ptr[i + 1] & ((1 << nother) - 1)) << (nBits - nother);
   }
-  ptr[size - 1] >>= nother;
+  ptr[size() - 1] >>= nother;
   return *this;
 }
 
 integer& integer::operator&=(integer&& other) & INTEGER_THROW_NEW {
-  make_size_at_least(other.size);
+  make_size_at_least(other.size());
   assert(nullptr != ptr);
   assert(nullptr != other.ptr);
-  for (std::uintmax_t i = 0; i < other.size; ++i) {
+  for (std::uintmax_t i = 0; i < other.size(); ++i) {
     ptr[i] &= other.ptr[i];
   }
   return *this;
 }
 
 integer& integer::operator|=(integer&& other) & INTEGER_THROW_NEW {
-  make_size_at_least(other.size);
+  make_size_at_least(other.size());
   assert(nullptr != ptr);
   assert(nullptr != other.ptr);
-  for (std::uintmax_t i = 0; i < other.size; ++i) {
+  for (std::uintmax_t i = 0; i < other.size(); ++i) {
     ptr[i] |= other.ptr[i];
   }
   return *this;
 }
 
 integer& integer::operator^=(integer&& other) & INTEGER_THROW_NEW {
-  make_size_at_least(other.size);
+  make_size_at_least(other.size());
   assert(nullptr != ptr);
   assert(nullptr != other.ptr);
-  for (std::uintmax_t i = 0; i < other.size; ++i) {
+  for (std::uintmax_t i = 0; i < other.size(); ++i) {
     ptr[i] ^= other.ptr[i];
   }
   return *this;
@@ -291,7 +287,7 @@ integer& integer::operator^=(integer&& other) & INTEGER_THROW_NEW {
 
 integer integer::operator~() const noexcept {
   auto copy = *this;
-  for (std::uintmax_t i = 0; i < copy.size; ++i) {
+  for (std::uintmax_t i = 0; i < copy.size(); ++i) {
     copy.ptr[i] = ~copy.ptr[i];
   }
   return copy;
@@ -358,7 +354,7 @@ bool integer::operator>=(integer const& other) const noexcept {
 }
 
 integer::~integer() noexcept {
-  assert(!(nullptr == ptr) || 0 == size);
+  assert(!(nullptr == ptr) || 0 == size());
   delete [] ptr;
 }
 
@@ -391,9 +387,9 @@ void integer::print_internals() const noexcept {
   std::cout <<
   "--- printing ---" << std::endl <<
   "--- ptr:   " << std::bitset<64>(ptr) << std::endl <<
-  "--- size:  " << size << std::endl <<
+  "--- size:  " << size() << std::endl <<
   "--- neg:   " << is_negative << std::endl;
-  for (std::uintmax_t i = 0; i < size; ++i) {
+  for (std::uintmax_t i = 0; i < size(); ++i) {
     //std::cout << "--- --- ptr[" << i << "] = " << std::bitset<64>(ptr[i]) << std::endl;
     std::cout << "--- --- ptr[" << i << "] = " << ptr[i] << std::endl;
   }
@@ -401,23 +397,31 @@ void integer::print_internals() const noexcept {
 }
 #endif
 
+std::uintmax_t integer::size() const noexcept {
+  if (nullptr == ptr) return 0;
+  return malloc_size(ptr) / sizeof(uintmax_t);
+}
+
 void integer::make_size_at_least(std::uintmax_t const sz) INTEGER_THROW_NEW {
-  assert(!(nullptr == ptr) || 0 == size);
-  if (size < sz) {
-    auto tmp = new std::uintmax_t[sz];
-    std::copy_n(ptr, size, tmp);
+  if (size() < sz) {
+    auto tmp = reinterpret_cast<uintmax_t*>(malloc(sizeof(std::uintmax_t) * sz));
+    std::copy_n(ptr, size(), tmp);
     delete [] ptr;
     ptr = tmp;
-    size = sz;
-  } else if (sz < size) {
-    std::memset(ptr + sz, 0, size - sz);
+  }
+  if (sz < size()) {
+    std::memset(
+      reinterpret_cast<uintmax_t*>(reinterpret_cast<char*>(ptr) + sz),
+      0,
+      sizeof(std::uintmax_t) * (size() - sz)
+    );
   }
 }
 
 std::pair<bool, bool> integer::compare_magnitude(integer const& other) const& noexcept {
-  for (auto i = std::max(size, other.size); ; --i) {
-    auto this_now = i < size ? ptr[i] : 0;
-    auto other_now = i < other.size ? other.ptr[i] : 0;
+  for (auto i = std::max(size(), other.size()); ; --i) {
+    auto this_now = i < size() ? ptr[i] : 0;
+    auto other_now = i < other.size() ? other.ptr[i] : 0;
     
     if (this_now < other_now) {
       return {true, false};

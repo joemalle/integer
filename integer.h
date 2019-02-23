@@ -116,8 +116,9 @@ struct integer {
 
 private:
   std::uintmax_t* ptr;
-  std::uintmax_t size;
   bool is_negative;
+  
+  std::uintmax_t size() const noexcept;
   
   template <class T> static T integer_abs(T const t) noexcept {
     if constexpr(std::is_signed<T>::value)  {
