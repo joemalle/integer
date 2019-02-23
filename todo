@@ -4,12 +4,8 @@ general:
 	don't copy so much
 
 bad algos:
-	>>=
-	<<=
-	*=
-	/=
+	/= and %= are O(nlogn) but should be O(n)
 
 missing:
 	sqrt
 	pow
-	bitwise operators
