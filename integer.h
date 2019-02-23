@@ -47,8 +47,8 @@ struct integer {
   template<class T> integer& operator=(T const& other) INTEGER_THROW_NEW {
     if constexpr (std::is_integral_v<T>) {
       make_size_at_least(1);
-      ptr[0] = integer_abs(other);
-      is_negative = other < 0;
+      ptr.get()[0] = integer_abs(other);
+      make_negative( other < 0);
       return *this;
     } else {
       static_assert(std::is_integral_v<T>, "can only assign from an integral type");
@@ -115,8 +115,17 @@ struct integer {
 #endif
 
 private:
-  std::uintmax_t* ptr;
-  bool is_negative;
+  struct tagged_ptr {
+    tagged_ptr() noexcept : ptr(nullptr) {}
+    
+    std::uintmax_t* get() const noexcept;
+    void set(std::uintmax_t* p) noexcept;
+    
+    std::uintmax_t* ptr;
+  } ptr;
+  
+  bool is_negative() const noexcept;
+  void make_negative(bool const b) noexcept;
   
   std::uintmax_t size() const noexcept;
   

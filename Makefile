@@ -1,5 +1,5 @@
-CXXFLAGS:=-Wall -Wextra -g -O0 -std=c++17 -fsanitize=address
-CXXFLAGSRELEASE:=-Wall -Wextra -DNDEBUG -O3 -std=c++17
+#CXXFLAGS:=-Wall -Wextra -g -O0 -std=c++17 -fsanitize=address
+CXXFLAGS:=-Wall -Wextra -O3 -std=c++17 -fsanitize=address
 CXX:=clang++
 CPPFILES:=$(wildcard *.cpp)
 OBJECTS:=$(CPPFILES:.cpp=.o)

@@ -1,7 +1,9 @@
 general:
-	make ptr a tagged ptr with is_negative
-	on some platforms, don't need an explicit size
+	would be nice to work on more platforms
 	don't copy so much
+
+bugs:
+	something wrong without fsanitize address
 
 bad algos:
 	/= and %= are O(nlogn) but should be O(n)
@@ -9,3 +11,4 @@ bad algos:
 missing:
 	sqrt
 	pow
+	search for assert(false) ... some codepaths missing

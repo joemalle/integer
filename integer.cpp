@@ -14,36 +14,29 @@
 #include <bitset>
 #endif
 
-/*INTEGER_EXPLICITNESS*/ integer::integer() noexcept
-  : ptr(nullptr)
-  , is_negative(0)
-{}
+/*INTEGER_EXPLICITNESS*/ integer::integer() noexcept {}
 
 integer::integer(integer&& other) noexcept
   : ptr(std::move(other.ptr))
-  , is_negative(std::move(other.is_negative))
 {
-  other.ptr = nullptr;
+  other.ptr.set(nullptr);
 }
     
-integer::integer(integer const& other) INTEGER_THROW_NEW
-  : integer()
-{
+integer::integer(integer const& other) INTEGER_THROW_NEW {
   *this = other;
 }
 
 integer& integer::operator=(integer&& other) & noexcept {
   std::swap(ptr, other.ptr);
-  std::swap(is_negative, other.is_negative);
   return *this;
 }
 
 integer& integer::operator=(integer const& other) INTEGER_THROW_NEW {
-  auto const pother = other.ptr;
+  auto const pother = other.ptr.get();
   auto const sz = other.size();
   make_size_at_least(sz);
-  std::copy_n(pother, sz, ptr);
-  is_negative = other.is_negative;
+  std::copy_n(pother, sz, ptr.get());
+  make_negative(other.is_negative());
   return *this;
 }
 
@@ -57,9 +50,9 @@ integer& integer::operator+=(integer&& other) & INTEGER_THROW_NEW {
     
     std::uintmax_t carry = 0;
     for (std::uintmax_t i = 0; i < larger.size(); ++i) {
-      larger.ptr[i] = __builtin_addcl(
-        larger.ptr[i],
-        i < smaller.size() ? smaller.ptr[i] : 0,
+      larger.ptr.get()[i] = __builtin_addcl(
+        larger.ptr.get()[i],
+        i < smaller.size() ? smaller.ptr.get()[i] : 0,
         carry,
         &carry
       );
@@ -70,7 +63,7 @@ integer& integer::operator+=(integer&& other) & INTEGER_THROW_NEW {
     
     if (0 < carry) {
       larger.make_size_at_least(larger.size() + 1);
-      larger.ptr[larger.size() - 1] = carry;
+      larger.ptr.get()[larger.size() - 1] = carry;
     }
     return larger;
   };
@@ -80,11 +73,11 @@ integer& integer::operator+=(integer&& other) & INTEGER_THROW_NEW {
     for (std::uintmax_t i = 0; i < std::max(lhs.size(), rhs.size()); ++i) {
       if (!(i < lhs.size())) {
         lhs.make_size_at_least(i + 1);
-        lhs.ptr[i] = 0;
+        lhs.ptr.get()[i] = 0;
       }
-      lhs.ptr[i] = __builtin_subcl(
-        lhs.ptr[i],
-        i < rhs.size() ? rhs.ptr[i] : std::uintmax_t{0},
+      lhs.ptr.get()[i] = __builtin_subcl(
+        lhs.ptr.get()[i],
+        i < rhs.size() ? rhs.ptr.get()[i] : std::uintmax_t{0},
         carry,
         &carry
       );
@@ -97,20 +90,20 @@ integer& integer::operator+=(integer&& other) & INTEGER_THROW_NEW {
       lhs = ~lhs;
       integer ci{carry};
       lhs = add_ignore_sign(lhs, ci);
-      lhs.is_negative = true;
+      lhs.make_negative(true);
     }
     
     return lhs;
   };
   
-  if (!is_negative && !other.is_negative) {
+  if (!is_negative() && !other.is_negative()) {
     return *this = add_ignore_sign(*this, other);
-  } else if (is_negative && other.is_negative) {
+  } else if (is_negative() && other.is_negative()) {
     return *this = -add_ignore_sign(*this, other);
-  } else if (!is_negative && other.is_negative) {
+  } else if (!is_negative() && other.is_negative()) {
     return *this = subtract_ignore_sign(*this, other);
   } else {
-    assert(is_negative && !other.is_negative);
+    assert(is_negative() && !other.is_negative());
     return *this = subtract_ignore_sign(other, *this);
   }
 }
@@ -142,8 +135,8 @@ integer integer::operator--(int) & INTEGER_THROW_NEW {
 integer& integer::operator*=(integer&& other) & INTEGER_THROW_NEW {
   integer res{0};
   while (other) {
-    assert(nullptr != other.ptr);
-    if (other.ptr[0] & 1) {
+    assert(nullptr != other.ptr.get());
+    if (other.ptr.get()[0] & 1) {
       res += integer(*this);
     }
     *this <<= integer(1);
@@ -215,9 +208,9 @@ integer& integer::operator<<=(integer&& other) & INTEGER_THROW_NEW {
   auto nother = static_cast<std::uintmax_t>(other);
   std::uintmax_t carry = 0;
   for (std::uintmax_t i = 0; i < size(); ++i) {
-    auto tmp = ptr[i];
-    ptr[i] <<= nother;
-    ptr[i] += carry;
+    auto tmp = ptr.get()[i];
+    ptr.get()[i] <<= nother;
+    ptr.get()[i] += carry;
     carry = tmp >> (nBits - nother);
     /*
     std::cout << "----" << std::endl;
@@ -229,7 +222,7 @@ integer& integer::operator<<=(integer&& other) & INTEGER_THROW_NEW {
   }
   if (0 < carry) {
     make_size_at_least(size() + 1);
-    ptr[size() - 1] = carry;
+    ptr.get()[size() - 1] = carry;
   }
   return *this;
 }
@@ -248,39 +241,39 @@ integer& integer::operator>>=(integer&& other) & INTEGER_THROW_NEW {
   assert(!(integer(nBits) < other));
   auto nother = static_cast<std::uintmax_t>(other);
   for (std::uintmax_t i = 0; i + 1 < size(); ++i) {
-    ptr[i] >>= nother;
-    ptr[i] += (ptr[i + 1] & ((1 << nother) - 1)) << (nBits - nother);
+    ptr.get()[i] >>= nother;
+    ptr.get()[i] += (ptr.get()[i + 1] & ((1 << nother) - 1)) << (nBits - nother);
   }
-  ptr[size() - 1] >>= nother;
+  ptr.get()[size() - 1] >>= nother;
   return *this;
 }
 
 integer& integer::operator&=(integer&& other) & INTEGER_THROW_NEW {
   make_size_at_least(other.size());
-  assert(nullptr != ptr);
-  assert(nullptr != other.ptr);
+  assert(nullptr != ptr.get());
+  assert(nullptr != other.ptr.get());
   for (std::uintmax_t i = 0; i < other.size(); ++i) {
-    ptr[i] &= other.ptr[i];
+    ptr.get()[i] &= other.ptr.get()[i];
   }
   return *this;
 }
 
 integer& integer::operator|=(integer&& other) & INTEGER_THROW_NEW {
   make_size_at_least(other.size());
-  assert(nullptr != ptr);
-  assert(nullptr != other.ptr);
+  assert(nullptr != ptr.get());
+  assert(nullptr != other.ptr.get());
   for (std::uintmax_t i = 0; i < other.size(); ++i) {
-    ptr[i] |= other.ptr[i];
+    ptr.get()[i] |= other.ptr.get()[i];
   }
   return *this;
 }
 
 integer& integer::operator^=(integer&& other) & INTEGER_THROW_NEW {
   make_size_at_least(other.size());
-  assert(nullptr != ptr);
-  assert(nullptr != other.ptr);
+  assert(nullptr != ptr.get());
+  assert(nullptr != other.ptr.get());
   for (std::uintmax_t i = 0; i < other.size(); ++i) {
-    ptr[i] ^= other.ptr[i];
+    ptr.get()[i] ^= other.ptr.get()[i];
   }
   return *this;
 }
@@ -288,14 +281,14 @@ integer& integer::operator^=(integer&& other) & INTEGER_THROW_NEW {
 integer integer::operator~() const noexcept {
   auto copy = *this;
   for (std::uintmax_t i = 0; i < copy.size(); ++i) {
-    copy.ptr[i] = ~copy.ptr[i];
+    copy.ptr.get()[i] = ~copy.ptr.get()[i];
   }
   return copy;
 }
 
 integer integer::operator-() const noexcept {
   auto copy = *this;
-  copy.is_negative = !copy.is_negative;
+  copy.make_negative(!copy.is_negative());
   return copy;
 }
 
@@ -304,35 +297,35 @@ integer integer::operator+() const noexcept {
 }
 
 bool integer::operator<(integer const& other) const noexcept {
-  if (is_negative && !other.is_negative) {
+  if (is_negative() && !other.is_negative()) {
     return true;
-  } else if (!is_negative && other.is_negative) {
+  } else if (!is_negative() && other.is_negative()) {
     return false;
   }
   
   auto const [this_is_smaller, this_is_bigger] = compare_magnitude(other);
   
-  if (!is_negative && !other.is_negative) {
+  if (!is_negative() && !other.is_negative()) {
     return this_is_smaller;
   } else {
-    assert(is_negative && other.is_negative);
+    assert(is_negative() && other.is_negative());
     return this_is_bigger;
   }
 }
 
 bool integer::operator>(integer const& other) const noexcept {
-  if (is_negative && !other.is_negative) {
+  if (is_negative() && !other.is_negative()) {
     return false;
-  } else if (!is_negative && other.is_negative) {
+  } else if (!is_negative() && other.is_negative()) {
     return true;
   }
   
   auto const [this_is_smaller, this_is_bigger] = compare_magnitude(other);
   
-  if (!is_negative && !other.is_negative) {
+  if (!is_negative() && !other.is_negative()) {
     return this_is_bigger;
   } else {
-    assert(is_negative && other.is_negative);
+    assert(is_negative() && other.is_negative());
     return this_is_smaller;
   }
 }
@@ -354,8 +347,8 @@ bool integer::operator>=(integer const& other) const noexcept {
 }
 
 integer::~integer() noexcept {
-  assert(!(nullptr == ptr) || 0 == size());
-  delete [] ptr;
+  assert(!(nullptr == ptr.get()) || 0 == size());
+  delete [] ptr.get();
 }
 
 /*explicit*/ integer::operator bool() const noexcept {
@@ -363,8 +356,8 @@ integer::~integer() noexcept {
 }
 
 /*explicit*/ integer::operator std::uintmax_t() const noexcept {
-  assert(nullptr != ptr);
-  return ptr[0];
+  assert(nullptr != ptr.get());
+  return ptr.get()[0];
 }
 
 std::string integer::string() const noexcept {
@@ -386,32 +379,56 @@ std::string integer::string() const noexcept {
 void integer::print_internals() const noexcept {
   std::cout <<
   "--- printing ---" << std::endl <<
-  "--- ptr:   " << std::bitset<64>(ptr) << std::endl <<
+  "--- ptr:   " << std::bitset<64>(ptr.get()) << std::endl <<
   "--- size:  " << size() << std::endl <<
-  "--- neg:   " << is_negative << std::endl;
+  "--- neg:   " << is_negative() << std::endl;
   for (std::uintmax_t i = 0; i < size(); ++i) {
     //std::cout << "--- --- ptr[" << i << "] = " << std::bitset<64>(ptr[i]) << std::endl;
-    std::cout << "--- --- ptr[" << i << "] = " << ptr[i] << std::endl;
+    std::cout << "--- --- ptr[" << i << "] = " << ptr.get()[i] << std::endl;
   }
   std::cout << "----------------" << std::endl;
 }
 #endif
 
+std::uintmax_t* integer::tagged_ptr::get() const noexcept {
+  auto p = reinterpret_cast<std::uintptr_t>(ptr); 
+  p &= ~1;
+  return reinterpret_cast<std::uintmax_t*>(p);
+}
+
+void integer::tagged_ptr::set(std::uintmax_t* p) noexcept {
+  ptr = p;
+}
+
+bool integer::is_negative() const noexcept {
+  return reinterpret_cast<std::uintptr_t>(ptr.ptr) & 1;
+}
+
+void integer::make_negative(bool const b) noexcept {
+  auto p = reinterpret_cast<std::uintptr_t>(ptr.ptr); 
+  if (b) {
+    p |= 1;
+  } else {
+    p &= ~1;
+  }
+  ptr.ptr = reinterpret_cast<uintmax_t*>(p);
+}
+
 std::uintmax_t integer::size() const noexcept {
-  if (nullptr == ptr) return 0;
-  return malloc_size(ptr) / sizeof(uintmax_t);
+  if (nullptr == ptr.get()) return 0;
+  return malloc_size(ptr.get()) / sizeof(uintmax_t);
 }
 
 void integer::make_size_at_least(std::uintmax_t const sz) INTEGER_THROW_NEW {
   if (size() < sz) {
     auto tmp = reinterpret_cast<uintmax_t*>(malloc(sizeof(std::uintmax_t) * sz));
-    std::copy_n(ptr, size(), tmp);
-    delete [] ptr;
-    ptr = tmp;
+    std::copy_n(ptr.get(), size(), tmp);
+    delete [] ptr.get();
+    ptr.set(tmp);
   }
   if (sz < size()) {
     std::memset(
-      reinterpret_cast<uintmax_t*>(reinterpret_cast<char*>(ptr) + sz),
+      reinterpret_cast<uintmax_t*>(reinterpret_cast<char*>(ptr.get()) + sz),
       0,
       sizeof(std::uintmax_t) * (size() - sz)
     );
@@ -420,8 +437,8 @@ void integer::make_size_at_least(std::uintmax_t const sz) INTEGER_THROW_NEW {
 
 std::pair<bool, bool> integer::compare_magnitude(integer const& other) const& noexcept {
   for (auto i = std::max(size(), other.size()); ; --i) {
-    auto this_now = i < size() ? ptr[i] : 0;
-    auto other_now = i < other.size() ? other.ptr[i] : 0;
+    auto this_now = i < size() ? ptr.get()[i] : 0;
+    auto other_now = i < other.size() ? other.ptr.get()[i] : 0;
     
     if (this_now < other_now) {
       return {true, false};
