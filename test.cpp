@@ -3,7 +3,7 @@
 
 int main() {
   integer i0 = 0;
-  //i0.print_internals();
+  i0.print_internals();
   assert(i0 == 0);
   assert(0 == i0);
   assert(!(0 < i0));

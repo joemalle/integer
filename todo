@@ -2,9 +2,6 @@ general:
 	would be nice to work on more platforms
 	don't copy so much
 
-bugs:
-	something wrong without fsanitize address
-
 bad algos:
 	/= and %= are O(nlogn) but should be O(n)
 

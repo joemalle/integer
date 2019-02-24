@@ -115,17 +115,20 @@ struct integer {
 #endif
 
 private:
+  bool is_negative() const noexcept;
+  void make_negative(bool const b) noexcept;
+  
   struct tagged_ptr {
-    tagged_ptr() noexcept : ptr(nullptr) {}
+    tagged_ptr() noexcept;
     
     std::uintmax_t* get() const noexcept;
     void set(std::uintmax_t* p) noexcept;
     
+    friend bool integer::is_negative() const noexcept;
+    friend void integer::make_negative(bool const b) noexcept;
+  private:
     std::uintmax_t* ptr;
   } ptr;
-  
-  bool is_negative() const noexcept;
-  void make_negative(bool const b) noexcept;
   
   std::uintmax_t size() const noexcept;
   

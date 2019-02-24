@@ -231,12 +231,6 @@ integer& integer::operator>>=(integer&& other) & INTEGER_THROW_NEW {
   auto constexpr nBits = 8 * sizeof(std::uintmax_t);
   while (!(other < integer(nBits))) {
     assert(false);
-    /*for (std::uintmax_t i = 0; i + 1 < size; ++i) {
-      assert(nullptr != ptr);
-      ptr[i] = ptr[i + 1];
-    }
-    ptr[size - 1] = 0;
-    other -= integer(nBits);*/
   }
   assert(!(integer(nBits) < other));
   auto nother = static_cast<std::uintmax_t>(other);
@@ -377,18 +371,24 @@ std::string integer::string() const noexcept {
 
 #ifndef DNDEBUG
 void integer::print_internals() const noexcept {
-  std::cout <<
-  "--- printing ---" << std::endl <<
-  "--- ptr:   " << std::bitset<64>(ptr.get()) << std::endl <<
-  "--- size:  " << size() << std::endl <<
-  "--- neg:   " << is_negative() << std::endl;
+  printf(
+    "--- printing ---\n"
+    "--- ptr:   %p\n"
+    "--- size:  %lu\n"
+    "--- neg:   %d\n",
+    ptr.get(), size(), is_negative()
+  );
   for (std::uintmax_t i = 0; i < size(); ++i) {
     //std::cout << "--- --- ptr[" << i << "] = " << std::bitset<64>(ptr[i]) << std::endl;
-    std::cout << "--- --- ptr[" << i << "] = " << ptr.get()[i] << std::endl;
+    printf("--- --- ptr[%lu] = %lu\n", i, ptr.get()[i]);
   }
-  std::cout << "----------------" << std::endl;
+  printf("----------------\n");
 }
 #endif
+
+integer::tagged_ptr::tagged_ptr() noexcept
+  : ptr(nullptr)
+{}
 
 std::uintmax_t* integer::tagged_ptr::get() const noexcept {
   auto p = reinterpret_cast<std::uintptr_t>(ptr); 
@@ -415,7 +415,9 @@ void integer::make_negative(bool const b) noexcept {
 }
 
 std::uintmax_t integer::size() const noexcept {
-  if (nullptr == ptr.get()) return 0;
+  if (nullptr == ptr.get()) {
+    return 0;
+  }
   return malloc_size(ptr.get()) / sizeof(uintmax_t);
 }
 
@@ -428,7 +430,7 @@ void integer::make_size_at_least(std::uintmax_t const sz) INTEGER_THROW_NEW {
   }
   if (sz < size()) {
     std::memset(
-      reinterpret_cast<uintmax_t*>(reinterpret_cast<char*>(ptr.get()) + sz),
+      ptr.get() + sz,
       0,
       sizeof(std::uintmax_t) * (size() - sz)
     );
