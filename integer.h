@@ -115,17 +115,24 @@ struct integer {
 #endif
 
 private:
-  bool is_negative() const noexcept;
-  void make_negative(bool const b) noexcept;
-  
+#define TAGVAL(WHICH, BIT) \
+  bool is_##WHICH() const noexcept; \
+  void make_##WHICH(bool const b) noexcept;
+  TAGVAL(negative, 0);
+  TAGVAL(large, 1);
+#undef TAGVAL
   struct tagged_ptr {
     tagged_ptr() noexcept;
     
     std::uintmax_t* get() const noexcept;
     void set(std::uintmax_t* p) noexcept;
     
-    friend bool integer::is_negative() const noexcept;
-    friend void integer::make_negative(bool const b) noexcept;
+#define TAGVAL(WHICH, BIT) \
+    friend bool integer::is_##WHICH() const noexcept; \
+    friend void integer::make_##WHICH(bool const b) noexcept;
+    TAGVAL(negative, 0);
+    TAGVAL(large, 1);
+#undef TAGVAL
   private:
     std::uintmax_t* ptr;
   } ptr;

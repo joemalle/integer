@@ -40,8 +40,6 @@ integer& integer::operator=(integer const& other) INTEGER_THROW_NEW {
   return *this;
 }
 
-
-
 integer& integer::operator+=(integer&& other) & INTEGER_THROW_NEW {
   auto const add_ignore_sign = [](integer& lhs, integer& rhs) INTEGER_THROW_NEW {
     bool const lhs_is_larger = rhs.size() < lhs.size();
@@ -400,19 +398,21 @@ void integer::tagged_ptr::set(std::uintmax_t* p) noexcept {
   ptr = p;
 }
 
-bool integer::is_negative() const noexcept {
-  return reinterpret_cast<std::uintptr_t>(ptr.ptr) & 1;
+#define TAGVAL(WHICH, BIT) \
+bool integer::is_##WHICH() const noexcept { \
+  return reinterpret_cast<std::uintptr_t>(ptr.ptr) & (1 << BIT); \
+} \
+void integer::make_##WHICH(bool const b) noexcept { \
+  auto p = reinterpret_cast<std::uintptr_t>(ptr.ptr); \
+  if (b) { \
+    p |= (1 << BIT); \
+  } else { \
+    p &= ~(1 << BIT); \
+  } \
+  ptr.ptr = reinterpret_cast<uintmax_t*>(p); \
 }
-
-void integer::make_negative(bool const b) noexcept {
-  auto p = reinterpret_cast<std::uintptr_t>(ptr.ptr); 
-  if (b) {
-    p |= 1;
-  } else {
-    p &= ~1;
-  }
-  ptr.ptr = reinterpret_cast<uintmax_t*>(p);
-}
+TAGVAL(negative, 0);
+TAGVAL(large, 1);
 
 std::uintmax_t integer::size() const noexcept {
   if (nullptr == ptr.get()) {
